@@ -12,41 +12,51 @@ export const apicall = functions.https.onRequest((req, res) => {
     res.set('Access-Control-Allow-Origin', "*");
     res.set('Access-Control-Allow-Methods', 'GET, POST');
     request(address,function(err,resp,body){
+        console.log('RESP', resp)
         if(!err){
             handlePrd(JSON.parse(body)).then((dd)=>{
                 res.send(dd)
             }).catch(er=>{
-                res.send(er)
+                res.send({loaded:false,error_code:er})
             })
         }else {
             console.log('ERROR',err)
-            res.send({error:true})
+            res.send({loaded:false,error_code:err})
         }
     })
  });
 
  async function handlePrd(data){
      if(data.error_code === 0){
-         //successfully get prd,
          const prd = data.data.product_details;
          //gether necessary fields
          const images = prd.images; //.map(item=>item.image_url);
          const name = prd.name;
-         const thName = await callapi(prd.name); // cn2th(prd.name);
+         const thName = await callapi(prd.name);
          const original_price = prd.original_price;
          const pid = prd.product_id;
          const price = prd.current_price;
          const score = prd.score;
          let sku_detail = prd.product_sku_detail;
          for (const sku of sku_detail){
-             sku.sku_thName = await callapi(sku.sku_name);
-             console.log(sku.sku_thName);
+             if(isOne(sku.sku_name)){
+                 if(isNumber(sku.sku_name)){
+                    sku.sku_thName = sku.sku_name
+                 }else {
+                    sku.sku_thName = await callapi(sku.sku_name)
+                 }
+             }else {
+                sku.sku_thName = sku.sku_name
+             }
          }
          let skus = prd.sku;
          for (const val of skus[0].values){
-             val.thDesc = await callapi(val.desc);
-             console.log(val.thDesc);
-         }                       //need translate
+             if(isNumber(val.desc)){
+                 val.thDesc = val.desc
+             }else {
+                val.thDesc = await callapi(val.desc);
+             }
+         } 
          const myPrd = {
              images:images,
              name:name,
@@ -58,7 +68,7 @@ export const apicall = functions.https.onRequest((req, res) => {
              sku_detail:sku_detail,
              skus:skus,
          }
-         return {loaded:true,data:myPrd}
+         return {loaded:true,error_code:0,data:myPrd}
      }else {
          //did not get prd
          return {loaded:false,error_code:data.error_code}
@@ -66,25 +76,30 @@ export const apicall = functions.https.onRequest((req, res) => {
 
  }
 
+ function isNumber(str:string){
+    let reg = /^\w+$/;
+    return reg.test(str)
+ }
+
+ function isOne(str:string){
+     const cc = str.split(/\>|\s/);
+     if(cc.length==1){
+         return true
+     }else {
+         return false
+     }
+ }
+
  function callapi(text) {
     return new Promise(resolve=>{
         client.translate({text:text,from:'zh-cn',to:'th'},function(err,data){
             if(err){
-                console.error(err)
-                //callapi(text)
-                //reject(err)
+                console.error("ERROR",err)
                 resolve(err)
             }else{
-                //console.log(text)
-                //console.log(data)
                 resolve(data)
             }
         })
     })
-}
-
-async function transSkus(arr){
-    const promises = arr.map(item=>callapi(item.desc));
-    await Promise.all(promises);
 }
 
